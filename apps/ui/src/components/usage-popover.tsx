@@ -70,14 +70,14 @@ export function UsagePopover() {
   const isCodexAuthenticated = codexAuthStatus?.authenticated;
 
   // Use React Query hooks for usage data
-  // Only enable polling when popover is open AND the tab is active
+  // Enable polling in the background regardless of popover state or active tab
   const {
     data: claudeUsage,
     isLoading: claudeLoading,
     error: claudeQueryError,
     dataUpdatedAt: claudeUsageLastUpdated,
     refetch: refetchClaude,
-  } = useClaudeUsage(open && activeTab === 'claude' && isClaudeAuthenticated);
+  } = useClaudeUsage(isClaudeAuthenticated);
 
   const {
     data: codexUsage,
@@ -85,7 +85,7 @@ export function UsagePopover() {
     error: codexQueryError,
     dataUpdatedAt: codexUsageLastUpdated,
     refetch: refetchCodex,
-  } = useCodexUsage(open && activeTab === 'codex' && isCodexAuthenticated);
+  } = useCodexUsage(isCodexAuthenticated);
 
   // Parse errors into structured format
   const claudeError = useMemo((): UsageError | null => {
