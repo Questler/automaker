@@ -230,9 +230,53 @@ export const CardHeaderSection = memo(function CardHeaderSection({
         )}
 
       {/* In progress header */}
-      {!isCurrentAutoTask && feature.status === 'in_progress' && (
+      {!isCurrentAutoTask && !isSelectionMode && feature.status === 'in_progress' && (
         <>
           <div className="absolute top-2 right-2 flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 hover:bg-white/10 text-muted-foreground hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              data-testid={`edit-feature-${feature.id}`}
+              title="Edit"
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 hover:bg-white/10 text-muted-foreground hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSpawnTask?.();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              data-testid={`spawn-feature-${feature.id}`}
+              title="Spawn Sub-Task"
+            >
+              <GitFork className="w-4 h-4" />
+            </Button>
+            {onViewOutput && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 hover:bg-white/10 text-muted-foreground hover:text-foreground"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewOutput();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                data-testid={`logs-in-progress-${feature.id}`}
+                title="Logs"
+              >
+                <FileText className="w-4 h-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -258,46 +302,11 @@ export const CardHeaderSection = memo(function CardHeaderSection({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-36">
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit();
-                  }}
-                  data-testid={`edit-feature-${feature.id}`}
-                  className="text-xs"
-                >
-                  <Edit className="w-3 h-3 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-                {onViewOutput && (
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onViewOutput();
-                    }}
-                    data-testid={`view-logs-${feature.id}`}
-                    className="text-xs"
-                  >
-                    <FileText className="w-3 h-3 mr-2" />
-                    View Logs
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSpawnTask?.();
-                  }}
-                  data-testid={`spawn-feature-${feature.id}`}
-                  className="text-xs"
-                >
-                  <GitFork className="w-3 h-3 mr-2" />
-                  Spawn Sub-Task
-                </DropdownMenuItem>
                 {/* Model info in dropdown */}
                 {(() => {
                   const ProviderIcon = getProviderIconForModel(feature.model);
                   return (
-                    <div className="px-2 py-1.5 text-[10px] text-muted-foreground border-t mt-1 pt-1.5">
+                    <div className="px-2 py-1.5 text-[10px] text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <ProviderIcon className="w-3 h-3" />
                         <span>{formatModelName(feature.model ?? DEFAULT_MODEL)}</span>

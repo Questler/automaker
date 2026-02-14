@@ -27,7 +27,7 @@ class DialogAwarePointerSensor extends PointerSensor {
     },
   ];
 }
-import { useAppStore, Feature } from '@/store/app-store';
+import { useAppStore, Feature, ALL_WORKTREES_BRANCH } from '@/store/app-store';
 import { getElectronAPI } from '@/lib/electron';
 import { getHttpApiClient } from '@/lib/http-api-client';
 import type { BacklogPlanResult, FeatureStatusWithPipeline } from '@automaker/types';
@@ -413,8 +413,14 @@ export function BoardView() {
   );
 
   // Get the branch for the currently selected worktree
-  // Find the worktree that matches the current selection, or use main worktree
+  // Find the worktree that matches the current selection, or use main worktree.
+  // When "All Worktrees" is selected, there is no single selected worktree —
+  // return undefined so consumers can handle the virtual selection gracefully.
   const selectedWorktree = useMemo((): WorktreeInfo | undefined => {
+    // ALL mode — no single worktree is selected
+    if (currentWorktreeInfo?.branch === ALL_WORKTREES_BRANCH) {
+      return undefined;
+    }
     let found;
     if (currentWorktreePath === null) {
       // Primary worktree selected - find the main worktree
@@ -432,7 +438,7 @@ export function BoardView() {
         (currentWorktreePath !== null ? pathsEqual(found.path, currentWorktreePath) : found.isMain),
       hasWorktree: found.hasWorktree ?? true,
     };
-  }, [worktrees, currentWorktreePath]);
+  }, [worktrees, currentWorktreePath, currentWorktreeInfo?.branch]);
 
   // Auto mode hook - pass current worktree to get worktree-specific state
   // Must be after selectedWorktree is defined
@@ -503,13 +509,19 @@ export function BoardView() {
   // Mutation to persist maxConcurrency to server settings
   const updateGlobalSettings = useUpdateGlobalSettings({ showSuccessToast: false });
 
-  // Get the current branch from the selected worktree (not from store which may be stale)
-  const currentWorktreeBranch = selectedWorktree?.branch ?? null;
+  // Derive the current branch from the selected worktree.
+  // When selectedWorktree is undefined (ALL mode), fall back to the store's branch value
+  // which carries the ALL_WORKTREES_BRANCH sentinel so downstream hooks bypass filtering.
+  // Otherwise prefer the branch from the resolved selectedWorktree object.
+  const currentWorktreeBranch = selectedWorktree?.branch ?? currentWorktreeInfo?.branch ?? null;
 
   // Get the branch for the currently selected worktree (for defaulting new features)
-  // Use the branch from selectedWorktree, or fall back to main worktree's branch
+  // When ALL_WORKTREES_BRANCH is active, fall back to main branch to avoid
+  // assigning the sentinel value as a real branch on new features.
+  const effectiveWorktreeBranch =
+    currentWorktreeBranch === ALL_WORKTREES_BRANCH ? null : currentWorktreeBranch;
   const selectedWorktreeBranch =
-    currentWorktreeBranch || worktrees.find((w) => w.isMain)?.branch || 'main';
+    effectiveWorktreeBranch || worktrees.find((w) => w.isMain)?.branch || 'main';
 
   // Aggregate running auto tasks across all worktrees for this project
   const autoModeByWorktree = useAppStore((state) => state.autoModeByWorktree);
@@ -521,14 +533,21 @@ export function BoardView() {
       .flatMap(([, state]) => state.runningTasks ?? []);
   }, [autoModeByWorktree, currentProject?.id]);
 
+  // When "All Worktrees" is selected, use aggregated running tasks from all worktrees
+  // so feature cards correctly show running agent state instead of "Resume"
+  const effectiveRunningAutoTasks =
+    currentWorktreeBranch === ALL_WORKTREES_BRANCH
+      ? runningAutoTasksAllWorktrees
+      : runningAutoTasks;
+
   // Get in-progress features for keyboard shortcuts (needed before actions hook)
   // Must be after runningAutoTasks is defined
   const inProgressFeaturesForShortcuts = useMemo(() => {
     return hookFeatures.filter((f) => {
-      const isRunning = runningAutoTasks.includes(f.id);
+      const isRunning = effectiveRunningAutoTasks.includes(f.id);
       return isRunning || f.status === 'in_progress';
     });
-  }, [hookFeatures, runningAutoTasks]);
+  }, [hookFeatures, effectiveRunningAutoTasks]);
 
   // Calculate unarchived card counts per branch
   const branchCardCounts = useMemo(() => {
@@ -593,7 +612,7 @@ export function BoardView() {
   } = useBoardActions({
     currentProject,
     features: hookFeatures,
-    runningAutoTasks,
+    runningAutoTasks: effectiveRunningAutoTasks,
     loadFeatures,
     persistFeatureCreate,
     persistFeatureUpdate,
@@ -772,6 +791,9 @@ export function BoardView() {
         // Only backlog features
         if (f.status !== 'backlog') return false;
 
+        // "All Worktrees" view — all backlog features are selectable
+        if (currentWorktreeBranch === ALL_WORKTREES_BRANCH) return true;
+
         // Filter by current worktree branch
         const featureBranch = f.branchName;
         if (!featureBranch) {
@@ -802,6 +824,9 @@ export function BoardView() {
       .filter((f) => {
         // Only waiting_approval features
         if (f.status !== 'waiting_approval') return false;
+
+        // "All Worktrees" view — all waiting_approval features are selectable
+        if (currentWorktreeBranch === ALL_WORKTREES_BRANCH) return true;
 
         // Filter by current worktree branch
         const featureBranch = f.branchName;
@@ -1076,7 +1101,7 @@ export function BoardView() {
   // Use keyboard shortcuts hook (after actions hook)
   useBoardKeyboardShortcuts({
     features: hookFeatures,
-    runningAutoTasks,
+    runningAutoTasks: effectiveRunningAutoTasks,
     onAddFeature: () => setShowAddDialog(true),
     onStartNextFeatures: handleStartNextFeatures,
     onViewOutput: handleViewOutput,
@@ -1092,7 +1117,7 @@ export function BoardView() {
   } = useBoardDragDrop({
     features: hookFeatures,
     currentProject,
-    runningAutoTasks,
+    runningAutoTasks: effectiveRunningAutoTasks,
     persistFeatureUpdate,
     handleStartImplementation,
   });
@@ -1144,7 +1169,7 @@ export function BoardView() {
   // Use column features hook
   const { getColumnFeatures, completedFeatures } = useBoardColumnFeatures({
     features: hookFeatures,
-    runningAutoTasks,
+    runningAutoTasks: effectiveRunningAutoTasks,
     searchQuery,
     currentWorktreePath,
     currentWorktreeBranch,
@@ -1330,7 +1355,7 @@ export function BoardView() {
       <BoardHeader
         projectPath={currentProject.path}
         maxConcurrency={maxConcurrency}
-        runningAgentsCount={runningAutoTasks.length}
+        runningAgentsCount={effectiveRunningAutoTasks.length}
         onConcurrencyChange={(newMaxConcurrency) => {
           if (currentProject) {
             // If selectedWorktree is undefined or it's the main worktree, branchName will be null.
@@ -1436,6 +1461,7 @@ export function BoardView() {
               id: f.id,
               branchName: f.branchName,
             }))}
+            isDragging={activeFeature !== null}
           />
         )}
 
@@ -1466,7 +1492,7 @@ export function BoardView() {
                   setShowAddDialog(true);
                 },
               }}
-              runningAutoTasks={runningAutoTasks}
+              runningAutoTasks={effectiveRunningAutoTasks}
               pipelineConfig={pipelineConfig}
               onAddFeature={() => setShowAddDialog(true)}
               isSelectionMode={isSelectionMode}
@@ -1505,7 +1531,7 @@ export function BoardView() {
                 setShowAddDialog(true);
               }}
               featuresWithContext={featuresWithContext}
-              runningAutoTasks={runningAutoTasks}
+              runningAutoTasks={effectiveRunningAutoTasks}
               onArchiveAllVerified={() => setShowArchiveAllVerifiedDialog(true)}
               onAddFeature={() => setShowAddDialog(true)}
               onShowCompletedModal={() => setShowCompletedModal(true)}

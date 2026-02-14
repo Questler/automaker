@@ -196,6 +196,8 @@ export {
   PROJECT_SETTINGS_VERSION,
   THINKING_TOKEN_BUDGET,
   getThinkingTokenBudget,
+  isAdaptiveThinkingModel,
+  getThinkingLevelsForModel,
   // Event hook constants
   EVENT_HOOK_TRIGGER_LABELS,
   // Claude-compatible provider templates (new)

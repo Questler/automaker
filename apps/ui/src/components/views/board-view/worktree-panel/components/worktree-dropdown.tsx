@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -16,6 +17,8 @@ import {
   Globe,
   GitPullRequest,
   FlaskConical,
+  Layers,
+  Check,
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
@@ -60,6 +63,12 @@ export interface WorktreeDropdownProps {
   getTestSessionInfo: (worktree: WorktreeInfo) => TestSessionInfo | undefined;
   /** Callback when a worktree is selected */
   onSelectWorktree: (worktree: WorktreeInfo) => void;
+  /** Whether the "All Worktrees" virtual selection is active */
+  isAllWorktreesSelected?: boolean;
+  /** Callback when "All Worktrees" is selected */
+  onSelectAllWorktrees?: () => void;
+  /** Pre-computed total card count across all branches (for "All Worktrees" display) */
+  totalCardCount?: number;
 
   // Branch switching props
   branches: BranchInfo[];
@@ -120,6 +129,7 @@ const MAX_TRIGGER_BRANCH_NAME_LENGTH = 24;
  * Used when there are 3+ worktrees to avoid horizontal tab wrapping.
  *
  * Features:
+ * - "All Worktrees" option at top with Layers icon and total card count
  * - Compact dropdown trigger showing current worktree with indicators
  * - Grouped display (main branch + worktrees)
  * - Full status indicators (PR, dev server, auto mode, changes)
@@ -139,6 +149,9 @@ export function WorktreeDropdown({
   isTestRunningForWorktree,
   getTestSessionInfo,
   onSelectWorktree,
+  isAllWorktreesSelected = false,
+  onSelectAllWorktrees,
+  totalCardCount = 0,
   // Branch switching props
   branches,
   filteredBranches,
@@ -186,8 +199,12 @@ export function WorktreeDropdown({
   onViewTestLogs,
 }: WorktreeDropdownProps) {
   // Find the currently selected worktree to display in the trigger
-  const selectedWorktree = worktrees.find((w) => isWorktreeSelected(w));
-  const displayBranch = selectedWorktree?.branch || 'Select worktree';
+  const selectedWorktree = isAllWorktreesSelected
+    ? undefined
+    : worktrees.find((w) => isWorktreeSelected(w));
+  const displayBranch = isAllWorktreesSelected
+    ? 'All'
+    : selectedWorktree?.branch || 'Select worktree';
   const { truncated: truncatedBranch, isTruncated: isBranchNameTruncated } = truncateBranchName(
     displayBranch,
     MAX_TRIGGER_BRANCH_NAME_LENGTH
@@ -234,101 +251,125 @@ export function WorktreeDropdown({
         variant="outline"
         size="sm"
         className={cn(
-          'h-7 px-3 gap-1.5 font-mono text-xs bg-secondary/50 hover:bg-secondary min-w-0 border-r-0 rounded-r-none'
+          'h-7 px-3 gap-1.5 font-mono text-xs bg-secondary/50 hover:bg-secondary min-w-0',
+          !isAllWorktreesSelected && 'border-r-0 rounded-r-none'
         )}
         disabled={isActivating}
       >
         {/* Running/Activating indicator */}
         {(selectedStatus.isRunning || isActivating) && <Spinner size="xs" className="shrink-0" />}
 
-        {/* Branch icon */}
-        <GitBranch className="w-3.5 h-3.5 shrink-0" />
+        {/* Branch/Layers icon */}
+        {isAllWorktreesSelected ? (
+          <Layers className="w-3.5 h-3.5 shrink-0" />
+        ) : (
+          <GitBranch className="w-3.5 h-3.5 shrink-0" />
+        )}
 
         {/* Branch name with optional tooltip */}
         <span className="truncate max-w-[150px]">{truncatedBranch}</span>
 
-        {/* Card count badge */}
-        {selectedWorktree &&
-          branchCardCounts?.[selectedWorktree.branch] !== undefined &&
-          branchCardCounts[selectedWorktree.branch] > 0 && (
-            <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 text-[10px] font-medium rounded bg-background/80 text-foreground border border-border shrink-0">
-              {branchCardCounts[selectedWorktree.branch]}
-            </span>
-          )}
-
-        {/* Uncommitted changes indicator */}
-        {selectedWorktree?.hasChanges && (
-          <span
-            className={cn(
-              'inline-flex items-center justify-center h-4 min-w-4 px-1 text-[10px] font-medium rounded border shrink-0',
-              getChangesBadgeStyles()
+        {/* Card count badge - show total when "All Worktrees" is selected */}
+        {isAllWorktreesSelected
+          ? totalCardCount > 0 && (
+              <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 text-[10px] font-medium rounded bg-background/80 text-foreground border border-border shrink-0">
+                {totalCardCount}
+              </span>
+            )
+          : selectedWorktree &&
+            branchCardCounts?.[selectedWorktree.branch] !== undefined &&
+            branchCardCounts[selectedWorktree.branch] > 0 && (
+              <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 text-[10px] font-medium rounded bg-background/80 text-foreground border border-border shrink-0">
+                {branchCardCounts[selectedWorktree.branch]}
+              </span>
             )}
-          >
-            <CircleDot className="w-2.5 h-2.5 mr-0.5" />
-            {selectedWorktree.changedFilesCount ?? '!'}
-          </span>
-        )}
 
-        {/* Dev server indicator */}
-        {selectedStatus.devServerRunning && (
-          <span
-            className="inline-flex items-center justify-center h-4 w-4 text-green-500 shrink-0"
-            title={`Dev server running on port ${selectedStatus.devServerInfo?.port}`}
-          >
-            <Globe className="w-3 h-3" />
-          </span>
-        )}
-
-        {/* Test running indicator */}
-        {selectedStatus.testRunning && (
-          <span
-            className="inline-flex items-center justify-center h-4 w-4 text-blue-500 shrink-0"
-            title="Tests Running"
-          >
-            <FlaskConical className="w-3 h-3 animate-pulse" />
-          </span>
-        )}
-
-        {/* Last test result indicator (when not running) */}
-        {!selectedStatus.testRunning && selectedStatus.testSessionInfo && (
-          <span
-            className={cn(
-              'inline-flex items-center justify-center h-4 w-4 shrink-0',
-              getTestStatusStyles(selectedStatus.testSessionInfo.status)
+        {/* Worktree-specific indicators - hidden when "All" is selected */}
+        {!isAllWorktreesSelected && (
+          <>
+            {/* Uncommitted changes indicator */}
+            {selectedWorktree?.hasChanges && (
+              <span
+                className={cn(
+                  'inline-flex items-center justify-center h-4 min-w-4 px-1 text-[10px] font-medium rounded border shrink-0',
+                  getChangesBadgeStyles()
+                )}
+              >
+                <CircleDot className="w-2.5 h-2.5 mr-0.5" />
+                {selectedWorktree.changedFilesCount ?? '!'}
+              </span>
             )}
-            title={`Last test: ${selectedStatus.testSessionInfo.status}`}
-          >
-            <FlaskConical className="w-3 h-3" />
-          </span>
-        )}
 
-        {/* Auto mode indicator */}
-        {selectedStatus.autoModeRunning && (
-          <span
-            className="flex items-center justify-center h-4 px-0.5 shrink-0"
-            title="Auto Mode Running"
-          >
-            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          </span>
-        )}
-
-        {/* PR badge */}
-        {selectedWorktree?.pr && (
-          <span
-            className={cn(
-              'inline-flex items-center gap-0.5 h-4 px-1 text-[10px] font-medium rounded border shrink-0',
-              getPRBadgeStyles(selectedWorktree.pr.state)
+            {/* Dev server indicator */}
+            {selectedStatus.devServerRunning && (
+              <span
+                className="inline-flex items-center justify-center h-4 w-4 text-green-500 shrink-0"
+                title={`Dev server running on port ${selectedStatus.devServerInfo?.port}`}
+              >
+                <Globe className="w-3 h-3" />
+              </span>
             )}
-          >
-            <GitPullRequest className="w-2.5 h-2.5" />#{selectedWorktree.pr.number}
-          </span>
+
+            {/* Test running indicator */}
+            {selectedStatus.testRunning && (
+              <span
+                className="inline-flex items-center justify-center h-4 w-4 text-blue-500 shrink-0"
+                title="Tests Running"
+              >
+                <FlaskConical className="w-3 h-3 animate-pulse" />
+              </span>
+            )}
+
+            {/* Last test result indicator (when not running) */}
+            {!selectedStatus.testRunning && selectedStatus.testSessionInfo && (
+              <span
+                className={cn(
+                  'inline-flex items-center justify-center h-4 w-4 shrink-0',
+                  getTestStatusStyles(selectedStatus.testSessionInfo.status)
+                )}
+                title={`Last test: ${selectedStatus.testSessionInfo.status}`}
+              >
+                <FlaskConical className="w-3 h-3" />
+              </span>
+            )}
+
+            {/* Auto mode indicator */}
+            {selectedStatus.autoModeRunning && (
+              <span
+                className="flex items-center justify-center h-4 px-0.5 shrink-0"
+                title="Auto Mode Running"
+              >
+                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              </span>
+            )}
+
+            {/* PR badge */}
+            {selectedWorktree?.pr && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-0.5 h-4 px-1 text-[10px] font-medium rounded border shrink-0',
+                  getPRBadgeStyles(selectedWorktree.pr.state)
+                )}
+              >
+                <GitPullRequest className="w-2.5 h-2.5" />#{selectedWorktree.pr.number}
+              </span>
+            )}
+          </>
         )}
 
         {/* Dropdown chevron */}
         <ChevronDown className="w-3 h-3 shrink-0 ml-auto" />
       </Button>
     ),
-    [isActivating, selectedStatus, truncatedBranch, selectedWorktree, branchCardCounts]
+    [
+      isActivating,
+      selectedStatus,
+      truncatedBranch,
+      selectedWorktree,
+      branchCardCounts,
+      isAllWorktreesSelected,
+      totalCardCount,
+    ]
   );
 
   // Wrap trigger button with dropdown trigger first to ensure ref is passed correctly
@@ -354,6 +395,47 @@ export function WorktreeDropdown({
           className="w-80 max-h-96 overflow-y-auto"
           aria-label="Worktree selection"
         >
+          {/* All Worktrees option */}
+          {onSelectAllWorktrees && (
+            <>
+              <DropdownMenuItem
+                onSelect={onSelectAllWorktrees}
+                className={cn(
+                  'flex items-center gap-2 cursor-pointer pr-2',
+                  isAllWorktreesSelected && 'bg-accent'
+                )}
+                aria-current={isAllWorktreesSelected ? 'true' : undefined}
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {/* Selection indicator */}
+                  {isAllWorktreesSelected ? (
+                    <Check className="w-3.5 h-3.5 shrink-0 text-primary" />
+                  ) : (
+                    <div className="w-3.5 h-3.5 shrink-0" />
+                  )}
+
+                  {/* Layers icon */}
+                  <Layers className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+
+                  {/* Label */}
+                  <span className={cn('text-xs truncate', isAllWorktreesSelected && 'font-medium')}>
+                    All Worktrees
+                  </span>
+                </div>
+
+                {/* Total card count badge */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {totalCardCount > 0 && (
+                    <span className="inline-flex items-center justify-center h-4 min-w-[1rem] px-1 text-[10px] font-medium rounded bg-background/80 text-foreground border border-border">
+                      {totalCardCount}
+                    </span>
+                  )}
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
+
           {/* Main worktree section */}
           {mainWorktree && (
             <>

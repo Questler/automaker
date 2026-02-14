@@ -54,13 +54,19 @@ export function getClaudeCliPaths(): string[] {
 
   if (isWindows) {
     const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-    return [
+    const nvmSymlink = process.env.NVM_SYMLINK;
+    const paths = [
       path.join(os.homedir(), '.local', 'bin', 'claude.exe'),
       path.join(appData, 'npm', 'claude.cmd'),
       path.join(appData, 'npm', 'claude'),
       path.join(appData, '.npm-global', 'bin', 'claude.cmd'),
       path.join(appData, '.npm-global', 'bin', 'claude'),
     ];
+    // nvm4w (NVM for Windows) symlink path
+    if (nvmSymlink) {
+      paths.push(path.join(nvmSymlink, 'claude.cmd'), path.join(nvmSymlink, 'claude'));
+    }
+    return paths;
   }
 
   return [
@@ -130,7 +136,8 @@ export function getCodexCliPaths(): string[] {
   if (isWindows) {
     const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
     const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
-    return [
+    const nvmSymlink = process.env.NVM_SYMLINK;
+    const paths = [
       path.join(homeDir, '.local', 'bin', 'codex.exe'),
       path.join(appData, 'npm', 'codex.cmd'),
       path.join(appData, 'npm', 'codex'),
@@ -142,6 +149,11 @@ export function getCodexCliPaths(): string[] {
       path.join(localAppData, 'pnpm', 'codex.cmd'),
       path.join(localAppData, 'pnpm', 'codex'),
     ];
+    // nvm4w (NVM for Windows) symlink path
+    if (nvmSymlink) {
+      paths.push(path.join(nvmSymlink, 'codex.cmd'), path.join(nvmSymlink, 'codex'));
+    }
+    return paths;
   }
 
   // Include NVM bin paths for codex installed via npm global under NVM
@@ -1126,7 +1138,8 @@ export function getOpenCodeCliPaths(): string[] {
   if (isWindows) {
     const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
     const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
-    return [
+    const nvmSymlink = process.env.NVM_SYMLINK;
+    const paths = [
       // OpenCode's default installation directory
       path.join(homeDir, '.opencode', 'bin', 'opencode.exe'),
       path.join(homeDir, '.local', 'bin', 'opencode.exe'),
@@ -1143,6 +1156,11 @@ export function getOpenCodeCliPaths(): string[] {
       path.join(homeDir, 'go', 'bin', 'opencode.exe'),
       path.join(process.env.GOPATH || path.join(homeDir, 'go'), 'bin', 'opencode.exe'),
     ];
+    // nvm4w (NVM for Windows) symlink path
+    if (nvmSymlink) {
+      paths.push(path.join(nvmSymlink, 'opencode.cmd'), path.join(nvmSymlink, 'opencode'));
+    }
+    return paths;
   }
 
   // Include NVM bin paths for opencode installed via npm global under NVM
