@@ -14,8 +14,43 @@ import {
 import { updateWorktreePRInfo } from '../../../lib/worktree-metadata.js';
 import { createLogger } from '@automaker/utils';
 import { validatePRState } from '@automaker/types';
+import { spawn } from 'child_process';
 
 const logger = createLogger('CreatePR');
+
+function sanitizeCommitMessage(message: string): string {
+  let sanitized = message.trim();
+  sanitized = sanitized.replace(/^`{1,3}([\s\S]*?)`{1,3}$/g, '$1').trim();
+  sanitized = sanitized.replace(/^'{1,3}([\s\S]*?)'{1,3}$/g, '$1').trim();
+  sanitized = sanitized.replace(/^\"{1,3}([\s\S]*?)\"{1,3}$/g, '$1').trim();
+  return sanitized;
+}
+
+function commitWithMessage(worktreePath: string, message: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', ['commit', '-F', '-'], { cwd: worktreePath, env: execEnv });
+    let stderr = '';
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderr.trim() || `git commit failed with code ${code}`));
+      }
+    });
+
+    child.stdin.write(message);
+    child.stdin.end();
+  });
+}
 
 export function createCreatePRHandler() {
   return async (req: Request, res: Response): Promise<void> => {
@@ -74,7 +109,7 @@ export function createCreatePRHandler() {
       // If there are changes, commit them before creating the PR
       let commitHash: string | null = null;
       if (hasChanges) {
-        const message = commitMessage || `Changes from ${branchName}`;
+        const message = sanitizeCommitMessage(commitMessage || `Changes from ${branchName}`);
         logger.debug(`Committing changes with message: ${message}`);
 
         try {
@@ -84,10 +119,7 @@ export function createCreatePRHandler() {
 
           // Create commit
           logger.debug(`Running: git commit`);
-          await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
-            cwd: worktreePath,
-            env: execEnv,
-          });
+          await commitWithMessage(worktreePath, message);
 
           // Get commit hash
           const { stdout: hashOutput } = await execAsync('git rev-parse HEAD', {

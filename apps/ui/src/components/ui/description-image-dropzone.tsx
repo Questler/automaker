@@ -509,9 +509,9 @@ export function DescriptionImageDropZone({
               </div>
             ))}
             {/* Text file previews */}
-            {textFiles.map((file) => (
+            {textFiles.map((file, index) => (
               <div
-                key={file.id}
+                key={file.id ? `text-${file.id}` : `text-${index}`}
                 className="relative group rounded-md border border-muted bg-muted/50 overflow-hidden"
                 data-testid={`description-text-file-preview-${file.id}`}
               >
@@ -536,7 +536,9 @@ export function DescriptionImageDropZone({
                 {/* Filename and size tooltip on hover */}
                 <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <p className="text-[10px] text-white truncate">{file.filename}</p>
-                  <p className="text-[9px] text-white/70">{formatFileSize(file.content.length)}</p>
+                  <p className="text-[9px] text-white/70">
+                    {formatFileSize(file.content?.length ?? 0)}
+                  </p>
                 </div>
               </div>
             ))}

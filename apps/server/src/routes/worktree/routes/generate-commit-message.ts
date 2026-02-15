@@ -50,6 +50,15 @@ async function* withTimeout<T>(
   }
 }
 
+function sanitizeCommitMessage(message: string): string {
+  let sanitized = message.trim();
+  // Strip wrapping quotes/backticks or repeated single quotes (e.g., '''title''')
+  sanitized = sanitized.replace(/^`{1,3}([\s\S]*?)`{1,3}$/g, '$1').trim();
+  sanitized = sanitized.replace(/^'{1,3}([\s\S]*?)'{1,3}$/g, '$1').trim();
+  sanitized = sanitized.replace(/^\"{1,3}([\s\S]*?)\"{1,3}$/g, '$1').trim();
+  return sanitized;
+}
+
 /**
  * Get the effective system prompt for commit message generation.
  * Uses custom prompt from settings if enabled, otherwise falls back to default.
@@ -218,7 +227,7 @@ export function createGenerateCommitMessageHandler(
         }
       }
 
-      const message = responseText.trim();
+      const message = sanitizeCommitMessage(responseText);
 
       if (!message || message.trim().length === 0) {
         logger.warn('Received empty response from model');

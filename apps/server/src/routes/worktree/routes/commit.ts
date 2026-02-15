@@ -6,11 +6,45 @@
  */
 
 import type { Request, Response } from 'express';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import { getErrorMessage, logError } from '../common.js';
 
 const execAsync = promisify(exec);
+
+function sanitizeCommitMessage(message: string): string {
+  let sanitized = message.trim();
+  sanitized = sanitized.replace(/^`{1,3}([\s\S]*?)`{1,3}$/g, '$1').trim();
+  sanitized = sanitized.replace(/^'{1,3}([\s\S]*?)'{1,3}$/g, '$1').trim();
+  sanitized = sanitized.replace(/^\"{1,3}([\s\S]*?)\"{1,3}$/g, '$1').trim();
+  return sanitized;
+}
+
+function commitWithMessage(worktreePath: string, message: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', ['commit', '-F', '-'], { cwd: worktreePath });
+    let stderr = '';
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderr.trim() || `git commit failed with code ${code}`));
+      }
+    });
+
+    child.stdin.write(message);
+    child.stdin.end();
+  });
+}
 
 export function createCommitHandler() {
   return async (req: Request, res: Response): Promise<void> => {
@@ -20,7 +54,8 @@ export function createCommitHandler() {
         message: string;
       };
 
-      if (!worktreePath || !message) {
+      const sanitizedMessage = message ? sanitizeCommitMessage(message) : '';
+      if (!worktreePath || !sanitizedMessage) {
         res.status(400).json({
           success: false,
           error: 'worktreePath and message required',
@@ -48,9 +83,7 @@ export function createCommitHandler() {
       await execAsync('git add -A', { cwd: worktreePath });
 
       // Create commit
-      await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
-        cwd: worktreePath,
-      });
+      await commitWithMessage(worktreePath, sanitizedMessage);
 
       // Get commit hash
       const { stdout: hashOutput } = await execAsync('git rev-parse HEAD', {
@@ -70,7 +103,7 @@ export function createCommitHandler() {
           committed: true,
           commitHash,
           branch: branchName,
-          message,
+          message: sanitizedMessage,
         },
       });
     } catch (error) {
