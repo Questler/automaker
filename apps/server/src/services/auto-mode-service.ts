@@ -1442,6 +1442,56 @@ export class AutoModeService {
       // Validate that working directory is allowed using centralized validation
       validateWorkingDirectory(workDir);
 
+      // Pre-execution merge: merge main/master into the worktree branch
+      // This ensures the feature branch has the latest changes from the default branch
+      // before execution starts (important for dependency chains where earlier features
+      // have already been merged into main)
+      if (worktreePath) {
+        try {
+          // Detect the default branch (main or master)
+          const { stdout: defaultBranchOutput } = await execAsync(
+            'git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || echo "refs/remotes/origin/main"',
+            { cwd: projectPath }
+          );
+          const defaultBranch = defaultBranchOutput.trim().replace('refs/remotes/origin/', '');
+
+          logger.info(
+            `Pre-execution merge: merging "${defaultBranch}" into worktree branch "${branchName}" at ${workDir}`
+          );
+
+          // Merge the default branch into the worktree's current branch
+          // Use --no-edit to auto-accept the merge commit message
+          await execAsync(`git merge ${defaultBranch} --no-edit`, { cwd: workDir });
+
+          logger.info(
+            `Successfully merged "${defaultBranch}" into worktree branch "${branchName}"`
+          );
+        } catch (mergeError: unknown) {
+          const err = mergeError as { stdout?: string; stderr?: string; message?: string };
+          const output = `${err.stdout || ''} ${err.stderr || ''} ${err.message || ''}`;
+          const hasConflicts =
+            output.includes('CONFLICT') || output.includes('Automatic merge failed');
+
+          if (hasConflicts) {
+            // Abort the merge to leave the worktree in a clean state
+            try {
+              await execAsync('git merge --abort', { cwd: workDir });
+            } catch {
+              // Ignore abort errors
+            }
+            logger.warn(
+              `Pre-execution merge of default branch into "${branchName}" had conflicts, skipping merge. Feature will proceed with its current branch state.`
+            );
+          } else if (output.includes('Already up to date')) {
+            logger.info(`Worktree branch "${branchName}" is already up to date with default branch`);
+          } else {
+            logger.warn(
+              `Pre-execution merge into "${branchName}" failed: ${output}. Feature will proceed with its current branch state.`
+            );
+          }
+        }
+      }
+
       // Update running feature with actual worktree info
       tempRunningFeature.worktreePath = worktreePath;
       tempRunningFeature.branchName = branchName ?? null;
@@ -1574,6 +1624,91 @@ export class AutoModeService {
       // - skipTests=true (manual verification): go to 'waiting_approval' for manual review
       const finalStatus = feature.skipTests ? 'waiting_approval' : 'verified';
       await this.updateFeatureStatus(projectPath, featureId, finalStatus);
+
+      // Post-verification: commit changes and merge feature branch into main
+      // This only runs for verified features (automated testing passed) with a worktree branch
+      if (finalStatus === 'verified' && worktreePath && branchName) {
+        try {
+          // Step 1: Commit any uncommitted changes on the feature branch
+          logger.info(`Post-verification commit for feature ${featureId} on branch "${branchName}"`);
+          const commitHash = await this.commitFeature(projectPath, featureId, worktreePath);
+          if (commitHash) {
+            logger.info(
+              `Post-verification commit successful for feature ${featureId}: ${commitHash.substring(0, 8)}`
+            );
+          } else {
+            logger.info(
+              `No uncommitted changes to commit for feature ${featureId} (changes may already be committed)`
+            );
+          }
+
+          // Step 2: Merge the feature branch into the default branch (main/master)
+          // This is done in the main project path (not the worktree)
+          try {
+            // Detect the default branch (main or master)
+            const { stdout: defaultBranchOutput } = await execAsync(
+              'git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || echo "refs/remotes/origin/main"',
+              { cwd: projectPath }
+            );
+            const defaultBranch = defaultBranchOutput.trim().replace('refs/remotes/origin/', '');
+
+            logger.info(
+              `Post-verification merge: merging branch "${branchName}" into "${defaultBranch}" for feature ${featureId}`
+            );
+
+            // Checkout the default branch in the main project path
+            await execAsync(`git checkout ${defaultBranch}`, { cwd: projectPath });
+
+            // Merge the feature branch into the default branch
+            const mergeMessage = `Merge ${branchName}: ${feature.title || featureId}`;
+            await execAsync(
+              `git merge ${branchName} -m "${mergeMessage.replace(/"/g, '\\"')}"`,
+              { cwd: projectPath }
+            );
+
+            logger.info(
+              `Successfully merged "${branchName}" into "${defaultBranch}" for feature ${featureId}`
+            );
+
+            // Update status to completed after successful merge
+            await this.updateFeatureStatus(projectPath, featureId, 'completed');
+
+            this.emitAutoModeEvent('auto_mode_progress', {
+              featureId,
+              branchName: feature.branchName ?? null,
+              content: `Feature branch "${branchName}" merged into "${defaultBranch}"`,
+              projectPath,
+            });
+          } catch (mergeError: unknown) {
+            const err = mergeError as { stdout?: string; stderr?: string; message?: string };
+            const output = `${err.stdout || ''} ${err.stderr || ''} ${err.message || ''}`;
+            const hasConflicts =
+              output.includes('CONFLICT') || output.includes('Automatic merge failed');
+
+            if (hasConflicts) {
+              // Abort the merge to leave the main repo in a clean state
+              try {
+                await execAsync('git merge --abort', { cwd: projectPath });
+              } catch {
+                // Ignore abort errors
+              }
+              logger.warn(
+                `Post-verification merge of "${branchName}" into default branch had conflicts for feature ${featureId}. Feature remains verified but not merged.`
+              );
+            } else {
+              logger.warn(
+                `Post-verification merge of "${branchName}" failed for feature ${featureId}: ${output}. Feature remains verified but not merged.`
+              );
+            }
+          }
+        } catch (commitError) {
+          logger.warn(
+            `Post-verification commit/merge failed for feature ${featureId}:`,
+            commitError
+          );
+          // Don't fail the feature - it's still verified, just not committed/merged
+        }
+      }
 
       // Record success to reset consecutive failure tracking
       this.recordSuccess();
