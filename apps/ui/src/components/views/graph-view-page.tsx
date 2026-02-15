@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useAppStore, Feature, FeatureImagePath } from '@/store/app-store';
+import { useAppStore, Feature, FeatureImagePath, ALL_WORKTREES_BRANCH } from '@/store/app-store';
 import { useShallow } from 'zustand/react/shallow';
 import { GraphView } from './graph-view';
 import {
@@ -54,6 +54,7 @@ export function GraphViewPage() {
   useWorktrees({ projectPath: currentProject?.path ?? '' });
 
   const worktreesByProject = useAppStore((s) => s.worktreesByProject);
+  const trackedBranchesByProject = useAppStore((s) => s.trackedBranchesByProject);
   const worktrees = useMemo(
     () =>
       currentProject
@@ -61,6 +62,18 @@ export function GraphViewPage() {
         : EMPTY_WORKTREES,
     [currentProject, worktreesByProject]
   );
+
+  // Build the set of active branches for "All Worktrees" view filtering.
+  // Active branches are those with a worktree or explicitly tracked.
+  const activeBranches = useMemo(() => {
+    if (!currentProject?.path) return new Set<string>();
+    const wts = worktreesByProject[currentProject.path] ?? [];
+    const tracked = trackedBranchesByProject[currentProject.path] ?? [];
+    const set = new Set<string>();
+    for (const wt of wts) set.add(wt.branch);
+    for (const tb of tracked) set.add(tb.name);
+    return set;
+  }, [currentProject?.path, worktreesByProject, trackedBranchesByProject]);
 
   // Load features
   const {
@@ -205,19 +218,27 @@ export function GraphViewPage() {
     };
   }, [currentProject, pendingBacklogPlan]);
 
-  // Branch card counts
+  // Branch card counts.
+  // When "All Worktrees" is active, only count features on active branches
+  // so the counts stay consistent with what the board actually displays.
   const branchCardCounts = useMemo(() => {
+    const primaryBranch = worktrees.find((w) => w.isMain)?.branch || 'main';
+    const isAllWorktrees = currentWorktreeInfo?.branch === ALL_WORKTREES_BRANCH;
     return hookFeatures.reduce(
       (counts, feature) => {
         if (feature.status !== 'completed') {
-          const branch = (feature.branchName as string | undefined) ?? 'main';
+          const branch = (feature.branchName as string | undefined) ?? primaryBranch;
+          // In "All Worktrees" view, skip features on inactive branches
+          if (isAllWorktrees && feature.branchName && !activeBranches.has(feature.branchName)) {
+            return counts;
+          }
           counts[branch] = (counts[branch] || 0) + 1;
         }
         return counts;
       },
       {} as Record<string, number>
     );
-  }, [hookFeatures]);
+  }, [hookFeatures, worktrees, currentWorktreeInfo?.branch, activeBranches]);
 
   // Category suggestions
   const categorySuggestions = useMemo(() => {

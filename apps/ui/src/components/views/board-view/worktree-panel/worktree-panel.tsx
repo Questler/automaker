@@ -108,7 +108,9 @@ export function WorktreePanel({
     setCurrentWorktree(projectPath, null, ALL_WORKTREES_BRANCH);
   }, [projectPath, setCurrentWorktree]);
 
-  // Compute total card count across all branches for "All" tab display
+  // Compute total card count across all active branches for "All" tab display.
+  // branchCardCounts already excludes features on inactive/stale branches,
+  // so this sum matches the filtered board view.
   const totalCardCount = useMemo(() => {
     if (!branchCardCounts) return 0;
     return Object.values(branchCardCounts).reduce((sum, count) => sum + count, 0);

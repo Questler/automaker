@@ -9,8 +9,10 @@
 
 /**
  * Base URL for the API server
+ * Supports TEST_SERVER_PORT env var to avoid conflicts with running dev servers
  */
-export const API_BASE_URL = 'http://localhost:3008';
+const serverPort = process.env.TEST_SERVER_PORT || '3008';
+export const API_BASE_URL = `http://localhost:${serverPort}`;
 
 /**
  * API endpoints for worktree operations

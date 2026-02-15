@@ -9,6 +9,7 @@ import { getElectronAPI } from '@/lib/electron';
 import { queryKeys } from '@/lib/query-keys';
 import { STALE_TIMES } from '@/lib/query-client';
 import { createSmartPollingInterval } from '@/hooks/use-event-recency';
+import type { TrackedBranch } from '@/store/types/state-types';
 
 const WORKTREE_REFETCH_ON_FOCUS = false;
 const WORKTREE_REFETCH_ON_RECONNECT = false;
@@ -32,6 +33,7 @@ interface RemovedWorktree {
 interface WorktreesResult {
   worktrees: WorktreeInfo[];
   removedWorktrees: RemovedWorktree[];
+  trackedBranches: TrackedBranch[];
 }
 
 /**
@@ -63,6 +65,7 @@ export function useWorktrees(projectPath: string | undefined, includeDetails = t
       return {
         worktrees: result.worktrees ?? [],
         removedWorktrees: result.removedWorktrees ?? [],
+        trackedBranches: result.trackedBranches ?? [],
       };
     },
     enabled: !!projectPath,

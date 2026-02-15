@@ -18,6 +18,36 @@ interface UseBoardColumnFeaturesProps {
   projectPath: string | null; // Main project path (for main worktree)
 }
 
+/**
+ * Build the set of "active" branch names for the current project.
+ * Active branches are those that either:
+ *   1. Have an existing worktree (appear in worktreesByProject)
+ *   2. Are explicitly tracked (appear in trackedBranchesByProject)
+ *
+ * Features assigned to branches outside this set are hidden when
+ * the "All Worktrees" view is selected, preventing stale/inactive
+ * branch features from cluttering the board.
+ */
+function getActiveBranches(projectPath: string): Set<string> {
+  const state = useAppStore.getState();
+  const worktrees = state.worktreesByProject[projectPath] ?? [];
+  const trackedBranches = state.trackedBranchesByProject[projectPath] ?? [];
+
+  const activeBranches = new Set<string>();
+
+  // Add all branches that have worktrees
+  for (const wt of worktrees) {
+    activeBranches.add(wt.branch);
+  }
+
+  // Add all explicitly tracked branches
+  for (const tb of trackedBranches) {
+    activeBranches.add(tb.name);
+  }
+
+  return activeBranches;
+}
+
 export function useBoardColumnFeatures({
   features,
   runningAutoTasks,
@@ -26,6 +56,11 @@ export function useBoardColumnFeatures({
   currentWorktreeBranch,
   projectPath,
 }: UseBoardColumnFeaturesProps) {
+  // Subscribe to worktree and tracked branch store values so the memo
+  // recalculates when active branches change (important for "All Worktrees" view).
+  const worktreesByProject = useAppStore((s) => s.worktreesByProject);
+  const trackedBranchesByProject = useAppStore((s) => s.trackedBranchesByProject);
+
   // Memoize column features to prevent unnecessary re-renders
   const columnFeaturesMap = useMemo(() => {
     // Use a more flexible type to support dynamic pipeline statuses
@@ -68,8 +103,17 @@ export function useBoardColumnFeatures({
 
       let matchesWorktree: boolean;
       if (effectiveBranch === ALL_WORKTREES_BRANCH) {
-        // "All Worktrees" view — show every feature regardless of branch assignment
-        matchesWorktree = true;
+        // "All Worktrees" view — only show features on active branches
+        // Active branches are those with a worktree or explicitly tracked.
+        // Features without a branch (unassigned) are always shown.
+        if (!featureBranch) {
+          matchesWorktree = true;
+        } else if (projectPath) {
+          const activeBranches = getActiveBranches(projectPath);
+          matchesWorktree = activeBranches.has(featureBranch);
+        } else {
+          matchesWorktree = true;
+        }
       } else if (!featureBranch) {
         // No branch assigned - show only on primary worktree
         const isViewingPrimary = currentWorktreePath === null;
@@ -206,6 +250,8 @@ export function useBoardColumnFeatures({
     currentWorktreePath,
     currentWorktreeBranch,
     projectPath,
+    worktreesByProject,
+    trackedBranchesByProject,
   ]);
 
   const getColumnFeatures = useCallback(

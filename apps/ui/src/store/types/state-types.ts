@@ -38,6 +38,13 @@ import type { TerminalState, TerminalPanelContent, PersistedTerminalState } from
 import type { Feature, ProjectAnalysis } from './project-types';
 import type { ClaudeUsage, CodexUsage } from './usage-types';
 
+/** Tracked branch metadata (branches that may not have worktrees but are actively tracked) */
+export interface TrackedBranch {
+  name: string;
+  createdAt: string;
+  lastActivatedAt?: string;
+}
+
 /** State for worktree init script execution */
 export interface InitScriptState {
   status: 'idle' | 'running' | 'success' | 'failed';
@@ -150,6 +157,10 @@ export interface AppState {
       changedFilesCount?: number;
     }>
   >;
+
+  // Tracked Branches (per-project, keyed by project path)
+  // Branches that are actively tracked even if they don't have worktrees
+  trackedBranchesByProject: Record<string, TrackedBranch[]>;
 
   // Keyboard Shortcuts
   keyboardShortcuts: KeyboardShortcuts; // User-defined keyboard shortcuts
@@ -506,6 +517,10 @@ export interface AppActions {
   }>;
   isPrimaryWorktreeBranch: (projectPath: string, branchName: string) => boolean;
   getPrimaryWorktreeBranch: (projectPath: string) => string | null;
+
+  // Tracked Branches actions (per-project)
+  setTrackedBranches: (projectPath: string, branches: TrackedBranch[]) => void;
+  getTrackedBranches: (projectPath: string) => TrackedBranch[];
 
   // Keyboard Shortcuts actions
   setKeyboardShortcut: (key: keyof KeyboardShortcuts, value: string) => void;

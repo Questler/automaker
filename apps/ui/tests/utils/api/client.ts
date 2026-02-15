@@ -6,6 +6,9 @@
 import { Page, APIResponse } from '@playwright/test';
 import { API_BASE_URL, API_ENDPOINTS } from '../core/constants';
 
+/** Frontend base URL - matches TEST_PORT from playwright config */
+const FRONTEND_BASE_URL = `http://localhost:${process.env.TEST_PORT || '3007'}`;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -300,7 +303,7 @@ export async function authenticateWithApiKey(page: Page, apiKey: string): Promis
     // Ensure we're on a page (needed for cookies to work)
     const currentUrl = page.url();
     if (!currentUrl || currentUrl === 'about:blank') {
-      await page.goto('http://localhost:3007', { waitUntil: 'domcontentloaded' });
+      await page.goto(FRONTEND_BASE_URL, { waitUntil: 'domcontentloaded' });
     }
 
     // Use Playwright request API (tied to this browser context) to avoid flakiness

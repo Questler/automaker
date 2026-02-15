@@ -22,11 +22,13 @@ export function useWorktrees({
   const currentWorktree = useAppStore((s) => s.getCurrentWorktree(projectPath));
   const setCurrentWorktree = useAppStore((s) => s.setCurrentWorktree);
   const setWorktreesInStore = useAppStore((s) => s.setWorktrees);
+  const setTrackedBranchesInStore = useAppStore((s) => s.setTrackedBranches);
   const useWorktreesEnabled = useAppStore((s) => s.useWorktrees);
 
   // Use the React Query hook
   const { data, isLoading, refetch } = useWorktreesQuery(projectPath);
   const worktrees = (data?.worktrees ?? []) as WorktreeInfo[];
+  const trackedBranches = data?.trackedBranches ?? [];
 
   // Sync worktrees to Zustand store when they change
   useEffect(() => {
@@ -34,6 +36,13 @@ export function useWorktrees({
       setWorktreesInStore(projectPath, worktrees);
     }
   }, [worktrees, projectPath, setWorktreesInStore]);
+
+  // Sync tracked branches to Zustand store when they change
+  useEffect(() => {
+    if (data?.trackedBranches) {
+      setTrackedBranchesInStore(projectPath, trackedBranches);
+    }
+  }, [trackedBranches, projectPath, setTrackedBranchesInStore, data?.trackedBranches]);
 
   // Handle removed worktrees callback when data changes
   const prevRemovedWorktreesRef = useRef<string | null>(null);

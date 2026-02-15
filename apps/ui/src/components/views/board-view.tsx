@@ -404,6 +404,20 @@ export function BoardView() {
   const currentWorktreeInfo = currentProject ? getCurrentWorktree(currentProject.path) : null;
   const currentWorktreePath = currentWorktreeInfo?.path ?? null;
   const worktreesByProject = useAppStore((s) => s.worktreesByProject);
+  const trackedBranchesByProject = useAppStore((s) => s.trackedBranchesByProject);
+
+  // Build the set of active branches for "All Worktrees" view filtering.
+  // Active branches are those with a worktree or explicitly tracked.
+  const activeBranches = useMemo(() => {
+    if (!currentProject?.path) return new Set<string>();
+    const wts = worktreesByProject[currentProject.path] ?? [];
+    const tracked = trackedBranchesByProject[currentProject.path] ?? [];
+    const set = new Set<string>();
+    for (const wt of wts) set.add(wt.branch);
+    for (const tb of tracked) set.add(tb.name);
+    return set;
+  }, [currentProject?.path, worktreesByProject, trackedBranchesByProject]);
+
   const worktrees = useMemo(
     () =>
       currentProject
@@ -549,21 +563,31 @@ export function BoardView() {
     });
   }, [hookFeatures, effectiveRunningAutoTasks]);
 
-  // Calculate unarchived card counts per branch
+  // Calculate unarchived card counts per branch.
+  // Always filter out features on inactive branches so that totalCardCount
+  // (the sum displayed on the "All" tab) matches the filtered board view.
+  // Active branches = those with a worktree or explicitly tracked.
   const branchCardCounts = useMemo(() => {
     // Use primary worktree branch as default for features without branchName
     const primaryBranch = worktrees.find((w) => w.isMain)?.branch || 'main';
+    const hasActiveBranches = activeBranches.size > 0;
     return hookFeatures.reduce(
       (counts, feature) => {
         if (feature.status !== 'completed') {
           const branch = feature.branchName ?? primaryBranch;
+          // Skip features on inactive branches so the "All" tab total
+          // stays consistent with what the board actually displays.
+          // Features without a branchName (unassigned) are always counted.
+          if (hasActiveBranches && feature.branchName && !activeBranches.has(feature.branchName)) {
+            return counts;
+          }
           counts[branch] = (counts[branch] || 0) + 1;
         }
         return counts;
       },
       {} as Record<string, number>
     );
-  }, [hookFeatures, worktrees]);
+  }, [hookFeatures, worktrees, activeBranches]);
 
   // Helper function to add and select a worktree
   const addAndSelectWorktree = useCallback(
@@ -791,8 +815,11 @@ export function BoardView() {
         // Only backlog features
         if (f.status !== 'backlog') return false;
 
-        // "All Worktrees" view — all backlog features are selectable
-        if (currentWorktreeBranch === ALL_WORKTREES_BRANCH) return true;
+        // "All Worktrees" view — only features on active branches are selectable
+        if (currentWorktreeBranch === ALL_WORKTREES_BRANCH) {
+          if (!f.branchName) return true; // Unassigned features always included
+          return activeBranches.has(f.branchName);
+        }
 
         // Filter by current worktree branch
         const featureBranch = f.branchName;
@@ -816,6 +843,7 @@ export function BoardView() {
     currentWorktreeBranch,
     currentProject?.path,
     isPrimaryWorktreeBranch,
+    activeBranches,
   ]);
 
   // Get waiting_approval feature IDs in current branch for "Select All"
@@ -825,8 +853,11 @@ export function BoardView() {
         // Only waiting_approval features
         if (f.status !== 'waiting_approval') return false;
 
-        // "All Worktrees" view — all waiting_approval features are selectable
-        if (currentWorktreeBranch === ALL_WORKTREES_BRANCH) return true;
+        // "All Worktrees" view — only features on active branches are selectable
+        if (currentWorktreeBranch === ALL_WORKTREES_BRANCH) {
+          if (!f.branchName) return true; // Unassigned features always included
+          return activeBranches.has(f.branchName);
+        }
 
         // Filter by current worktree branch
         const featureBranch = f.branchName;
@@ -850,6 +881,7 @@ export function BoardView() {
     currentWorktreeBranch,
     currentProject?.path,
     isPrimaryWorktreeBranch,
+    activeBranches,
   ]);
 
   // Handler for bulk verifying multiple features

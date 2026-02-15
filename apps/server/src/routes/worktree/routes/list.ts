@@ -4,7 +4,7 @@
  * Returns actual git worktrees from `git worktree list`.
  * Also scans .worktrees/ directory to discover worktrees that may have been
  * created externally or whose git state was corrupted.
- * Does NOT include tracked branches - only real worktrees with separate directories.
+ * Also includes tracked branches from the branch tracking system.
  */
 
 import type { Request, Response } from 'express';
@@ -25,6 +25,7 @@ import {
   checkGitHubRemote,
   type GitHubRemoteStatus,
 } from '../../github/routes/check-github-remote.js';
+import { getTrackedBranches } from './branch-tracking.js';
 
 const execAsync = promisify(exec);
 const logger = createLogger('Worktree');
@@ -433,9 +434,13 @@ export function createListHandler() {
         }
       }
 
+      // Fetch tracked branches (branches that may not have worktrees but are tracked)
+      const trackedBranches = await getTrackedBranches(projectPath);
+
       res.json({
         success: true,
         worktrees,
+        trackedBranches,
         removedWorktrees: removedWorktrees.length > 0 ? removedWorktrees : undefined,
       });
     } catch (error) {

@@ -83,6 +83,7 @@ import {
   type FileTreeNode,
   type ProjectAnalysis,
   // State types
+  type TrackedBranch,
   type InitScriptState,
   type AutoModeActivity,
   type AppState,
@@ -166,6 +167,7 @@ export type {
   Feature,
   FileTreeNode,
   ProjectAnalysis,
+  TrackedBranch,
   InitScriptState,
   AutoModeActivity,
   AppState,
@@ -254,6 +256,7 @@ const initialState: AppState = {
   useWorktrees: true,
   currentWorktreeByProject: {},
   worktreesByProject: {},
+  trackedBranchesByProject: {},
   keyboardShortcuts: DEFAULT_KEYBOARD_SHORTCUTS,
   muteDoneSound: false,
   disableSplashScreen: false,
@@ -1096,6 +1099,16 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     const mainWorktree = worktrees.find((w) => w.isMain);
     return mainWorktree?.branch ?? null;
   },
+
+  // Tracked Branches actions (per-project)
+  setTrackedBranches: (projectPath, branches) =>
+    set((state) => ({
+      trackedBranchesByProject: {
+        ...state.trackedBranchesByProject,
+        [projectPath]: branches,
+      },
+    })),
+  getTrackedBranches: (projectPath) => get().trackedBranchesByProject[projectPath] ?? [],
 
   // Keyboard Shortcuts actions
   setKeyboardShortcut: (key, value) =>
